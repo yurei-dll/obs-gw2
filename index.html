@@ -15,7 +15,7 @@
 </head>
 <script>
     /* Safe to configure this javascript area */
-    var API_KEY = "9E16A2E9-7793-7F46-8115-B170E9B2AB9D0B794E32-D7C2-49E7-9331-E6CBE2E6A424"
+    var API_KEY = ""
     var ACHIEVEMENTS_TO_TRACK = [265, 34, 57, 186] // Only IDs are accepted
 
     /* Do not touch below this line unless you know what you're doing! */
@@ -75,9 +75,19 @@
             cardTemplate.attr("class", "card")
             cardTemplate.appendTo(root)
         })
+        tick()
+        setTimeout(() => {
+            render()
+        }, 1500);
     });
 
-    var tick = setInterval(() => {
+    setInterval(() => {
+        tick()
+        setTimeout(() => {
+            render()
+        }, 1500);
+    }, 10000);
+    function tick() {
         // Check all achievements
         callAPI(`account/achievements?ids=${achievementString}`, res => {
             // Ex. response: {id:265, current: 2, max:1000, done:false}[]
@@ -95,7 +105,8 @@
                 }
             });
         });
-        // Render details
+    }
+    function render() {
         achievementsTracked.forEach(ach => {
             var listElement = $(`#${ach.id}`);
             var progressArea = listElement.children(".progressArea")
@@ -138,7 +149,7 @@
                 }
             }
         })
-    }, 5000);
+    }
 </script>
 <style type="text/css">
     @font-face {
