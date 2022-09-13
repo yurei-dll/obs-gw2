@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- Designed to be displayed as a small widget -->
+<!-- Most CSS and part of the Javascript can be freely configured, -->
+<!-- but saving a backup first is strongly recommended -->
+<!-- See ./LICENSE for legal info -->
+
+<head>
+    <meta charset="UTF-8">
+    <title>Live API Feed</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- Load libraries -->
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.3/jquery.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js" crossorigin></script>
+</head>
+<script>
+    /* Safe to configure this javascript area */
+    var API_KEY = "9E16A2E9-7793-7F46-8115-B170E9B2AB9D0B794E32-D7C2-49E7-9331-E6CBE2E6A424"
+    var ACHIEVEMENTS_TO_TRACK = [265, 34, 57, 186] // Only IDs are accepted
+
+    /* Do not touch below this line unless you know what you're doing! */
+    /*******************************************************************/
+    const endpoint = "https://api.guildwars2.com/v2/"
+
+    if (!API_KEY) throw new Error(`"API_KEY" not found! Create a ".env" file to configure it.`)
+    if (API_KEY.length < 20) throw new Error(`"API_KEY" seems to be invalid. Edit "api.js" to check it.`)
+
+    var availablePermissions = []
+    var achievementsTracked = []
+
+    let achievementString = ACHIEVEMENTS_TO_TRACK.join()
+
+    /**
+     * Call the Gw2 API
+     * @param {'account'|'account/achievements'|'account/bank'|'account/buildstorage'|'account/dailycrafting'|'account/dungeons'|'account/dyes'|'account/emotes'|'account/finishers'|'account/gliders'|'account/home'|'account/inventory'|'account/legendaryarmory'|'account/luck'|'account/mailcarriers'|'account/mapchests'|'account/masteries'|'account/mastery/points'|'account/materials'|'account/minis'|'account/mounts'|'account/mounts/skins'|'account/mounts/types'|'account/novelties'|'account/outfits'|'account/pvp/heroes'|'account/raids'|'account/recipes'|'account/skins'|'account/titles'|'account/wallet'|'account/worldbosses'|'achievements'|'achievements/categories'|'achievements/daily'|'achievements/daily/tomorrow'|'achievements/groups'|'backstory'|'backstory/answers'|'backstory/questions'|'build'|'characters'|'characters/:id/backstory'|'characters/:id/buildtabs'|'characters/:id/core'|'characters/:id/crafting'|'characters/:id/equipment'|'characters/:id/equipmenttabs'|'characters/:id/heropoints'|'characters/:id/inventory'|'characters/:id/quests'|'characters/:id/recipes'|'characters/:id/sab'|'characters/:id/skills'|'characters/:id/specializations'|'characters/:id/training'|'colors'|'commerce'|'commerce/delivery'|'commerce/exchange'|'commerce/exchange/coins'|'commerce/exchange/gems'|'commerce/listings'|'commerce/prices'|'commerce/transactions'|'continents'|'createsubtoken'|'currencies'|'dailycrafting'|'dungeons'|'emblem'|'emblem/backgrounds'|'emblem/foregrounds'|'emotes'|'files'|'finishers'|'gliders'|'home/cats'|'home/nodes'|'items'|'itemstats'|'legendaryarmory'|'legends'|'mailcarriers'|'mapchests'|'maps'|'masteries'|'materials'|'minis'|'mounts'|'mounts/skins'|'mounts/types'|'novelties'|'outfits'|'pets'|'professions'|'pvp'|'pvp/amulets'|'pvp/games'|'pvp/heroes'|'pvp/ranks'|'pvp/seasons'|'pvp/seasons/leaderboards'|'pvp/standings'|'pvp/stats'|'quaggans'|'quests'|'races'|'raids'|'recipes'|'recipes/search'|'skills'|'skins'|'specializations'|'stories'|'stories/seasons'|'titles'|'tokeninfo'|'traits'|'worldbosses'|'worlds'|'wvw'|'wvw/abilities'|'wvw/matches'|'wvw/matches/stats/teams'|'wvw/objectives'|'wvw/ranks'|'wvw/upgrades'} path 
+     * @param {function<object>} callback
+     */
+    function callAPI(path, callback) {
+        console.log(`Requesting ${path}`);
+        var xmlHttp = new XMLHttpRequest();
+        var symbol = path.includes("?") ? "&" : "?";
+        var url = `${endpoint}${path}${symbol}access_token=${API_KEY}`;
+        xmlHttp.onreadystatechange = function () {
+            if (xmlHttp.readyState == 4 && xmlHttp.status == 200) {
+                var jsonObject = JSON.parse(xmlHttp.responseText);
+                if (jsonObject.error) console.error(jsonObject.error);
+                callback(jsonObject);
+            }
+        }
+        xmlHttp.open("GET", url, true); // true for asynchronous 
+        xmlHttp.send(null);
+    }
+
+    // Get basic info
+    callAPI('tokeninfo', res => {
+        res.permissions.forEach(perm => availablePermissions.push(perm));
+        if (ACHIEVEMENTS_TO_TRACK.length > 0 && !availablePermissions.includes("progression"))
+            throw new Error("This API key does not support achievement tracking!");
+        callAPI('account', res => {
+            console.log(`Username ${res.name} is ready`)
+            console.log(`Permissions granted:`)
+            console.log(availablePermissions)
+        });
+    });
+    // Configure achievement tracker
+    callAPI(`achievements?ids=${achievementString}`, res => {
+        if (!res.error) {
+            achievementsTracked = res;
+        }
+        // Create list
+        var root = $(".content");
+        achievementsTracked.forEach(ach => {
+            var cardTemplate = $(".cardTemplate").clone()
+            cardTemplate.attr("id", ach.id)
+            cardTemplate.attr("class", "card")
+            cardTemplate.appendTo(root)
+        })
+    });
+
+    var tick = setInterval(() => {
+        // Check all achievements
+        callAPI(`account/achievements?ids=${achievementString}`, res => {
+            // Ex. response: {id:265, current: 2, max:1000, done:false}[]
+            if (res.error) throw new Error("API Responded with an error!\n" + res.error);
+            res.forEach(obj => {
+                // Find the same achievements in achievementsTracked[] and merge them, overwriting all properties
+                let tracked = achievementsTracked.find(a => a.id == obj.id);
+                let properties = Object.getOwnPropertyNames(obj);
+                if (!tracked) {
+                    achievementsTracked.push(obj)
+                } else {
+                    properties.forEach(p => {
+                        tracked[p] = obj[p];
+                    });
+                }
+            });
+        });
+        // Render details
+        achievementsTracked.forEach(ach => {
+            var listElement = $(`#${ach.id}`);
+            var progressArea = listElement.children(".progressArea")
+            var textArea = listElement.children(".textArea")
+            var cardThumb = listElement.children(".cardThumb")
+            if (ach.done) {
+                cardThumb.attr("src", "./merit.png")
+            } else {
+                cardThumb.attr("src", "./achievement_icon.png")
+            }
+            textArea.children(".cardName").text(ach.name)
+            textArea.children(".cardDescription").text(ach.description)
+            // Check for progress
+            if (ach.current && ach.max) {
+                // Check for tiers
+                if (ach.tiers.length > 0) {
+                    // Find tier
+                    var tierProgressElement = $("#" + ach.id + "t")
+                    if (ach.done) {
+                        var tierProgressString =
+                            `<progress id="${ach.id}t" value="10" max="10" class="complete" data-label="Completed"/>`;
+                        if (tierProgressElement.length == 0) {
+                            progressArea.append(tierProgressString)
+                        } else {
+                            tierProgressElement = tierProgressString
+                        }
+                    } else {
+                        var tier = 0;
+                        ach.tiers.forEach(t => {
+                            if (ach.current > t.count) tier++;
+                        })
+                        var tierProgressString =
+                            `<progress id="${ach.id}t" value="${ach.current}" max="${ach.tiers[tier].count}" data-label="Tier: ${tier += 1}/${ach.tiers.length}"/>`;
+                        if (tierProgressElement.length == 0) {
+                            progressArea.append(tierProgressString)
+                        } else {
+                            tierProgressElement = tierProgressString
+                        }
+                    }
+                }
+            }
+        })
+    }, 5000);
+</script>
+<style type="text/css">
+    @font-face {
+        font-family: PT-Serif;
+        src: url("PTSerif-Regular.ttf");
+    }
+
+    body {
+        background-image: url('./background.jpg');
+        background-repeat: no-repeat;
+        font-family: "PT-Serif";
+        margin: 0;
+        display: flex;
+        animation: ease;
+        transition: all 0.5s;
+    }
+
+    .root {
+        position: fixed;
+        width: 100%;
+        height: 100%;
+    }
+
+    .content {
+        display: flex;
+        flex-direction: column;
+        font-size: 1.1rem;
+        justify-content: space-evenly;
+        align-items: center;
+        width: 100%;
+        height: 100%;
+    }
+
+    .card {
+        width: 80vw;
+        height: 12vh;
+        color: #EFEEEE;
+        background-color: #181109;
+        border: 3px solid #17160C;
+        border-radius: 3px;
+        display: inline-table;
+        transition: all 0.5s;
+        padding: 8px
+    }
+
+    .progressArea {
+        float: right;
+        display: grid;
+        width: 35%;
+    }
+
+    .textArea {
+        display: grid;
+        width: 35%;
+    }
+
+    progress {
+        text-align: center;
+        border-radius: 0%;
+        height: 18px;
+        box-shadow: 1px 1px 4px rgba(0, 0, 0, 0.2);
+        width: 100%;
+        position: relative;
+    }
+
+    progress:before {
+        content: attr(data-label);
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: x-small;
+        font-style: italic;
+        vertical-align: 0;
+        position: absolute;
+        left: 0;
+        right: 0;
+    }
+
+    progress::-webkit-progress-bar {
+        background-color: #211D1C;
+        border-radius: 0%;
+        border: 1px solid #1C1A17;
+    }
+
+    progress::-webkit-progress-value {
+        /* From  #ED7A28 to #FFF3E4 */
+        background-image: -webkit-linear-gradient(0deg, #ED7A28 95%, #FFFFFF);
+        border: 1px solid #5E2500;
+        border-radius: 0%;
+    }
+
+    progress.complete::-webkit-progress-value {
+        /* From  #ED7A28 to #FFF3E4 */
+        background-image: -webkit-linear-gradient(0deg, #5585BA 98%, #FFFFFF);
+        border: 1px solid #FFFFFF;
+        border-radius: 0%;
+    }
+
+    .cardTemplate {
+        display: none;
+    }
+
+    .cardThumb {
+        float: left;
+        padding: 16px;
+        max-height: 50px;
+    }
+
+    .cardName {
+        color: #D2A48B;
+    }
+
+    .cardDescription {
+        color: #EFEEEE;
+        font-size: smaller;
+    }
+</style>
+
+<body>
+    <div class="root">
+        <div class="content"></div>
+    </div>
+    <div class="cardTemplate">
+        <img class="cardThumb"></img>
+        <span class="textArea">
+            <div class="cardName"></div>
+            <div class="cardDescription"></div>
+        </span>
+        <span class="progressArea"></span>
+    </div>
+</body>
+
+</html>
